@@ -283,7 +283,7 @@ func init() {
 func main() {
   go func() {
       log.Println(http.ListenAndServe("localhost:6060", nil))
-  }()
+	}()
 
 	host := os.Getenv("MYSQL_HOST")
 	if host == "" {

@@ -23,10 +23,85 @@ BIN_NAME:=isucari
 
 CA:=-o /dev/null -s -w "%{http_code}\n"
 
+all: build
+
+.PHONY: build
+build:
+	cd $(BUILD_DIR); \
+	go build -o $(BIN_NAME)
+
+.PHONY: restart
+restart:
+	sudo systemctl restart isucari.golang.service
+
+.PHONY: dev
+dev: build 
+	cd $(BUILD_DIR); \
+	./$(BIN_NAME)
+
+.PHONY: bench-dev
+bench-dev: commit before slow-on dev
+
+.PHONY: bench
+bench: commit before build restart log
+
+.PHONY: log
+log: 
+	sudo journalctl -u isucari.golang -n100 -f
+
+.PHONY: maji
+maji: commit before build restart
+
+# MySQLログとNginxログをSlackに投げる
+.PHONY: anal
+anal: slow kataru
+
+.PHONY: push
+push: 
+	git push
+
+.PHONY: commit
+commit:
+	# cd $(PROJECT_ROOT);
+	cd $(BUILD_DIR); \
+	git add .; \
+	git commit --allow-empty -m "tuning"
+
+.PHONY: before
+before:
+	$(eval when := $(shell date "+%s"))
+	mkdir -p ~/logs/$(when)
+	@if [ -f $(NGX_LOG) ]; then \
+		sudo mv -f $(NGX_LOG) ~/logs/$(when)/ ; \
+	fi
+	# @if [ -f $(MYSQL_LOG) ]; then \
+	# 	sudo mv -f $(MYSQL_LOG) ~/logs/$(when)/ ; \
+	# fi
+	sudo systemctl restart nginx
+	# sudo systemctl restart mysql
+
+.PHONY: slow
+slow: 
+	sudo pt-query-digest $(MYSQL_LOG) | $(SLACKCAT)
+
+.PHONY: kataru
+kataru:
+	sudo cat $(NGX_LOG) | kataribe -f ./kataribe.toml | $(SLACKCAT)
+
+.PHONY: slow-on
+slow-on:
+	sudo mysql -e "set global slow_query_log_file = '$(MYSQL_LOG)'; set global long_query_time = 0; set global slow_query_log = ON;"
+
+.PHONY: slow-off
+slow-off:
+	sudo mysql -e "set global slow_query_log = OFF;"
+
+.PHONY: pprof
 pprof:
 	$(PPROF)
 	$(SLACKRAW) -n pprof.png ./pprof.png
 
+.PHONY: setup
 setup:
   # sudo apt-get update
 	sudo apt install -y percona-toolkit dstat git unzip snapd
